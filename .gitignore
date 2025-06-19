@@ -1,0 +1,25 @@
+# Ignore environment variables file containing secrets
+.env
+
+# Ignore node_modules
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependency directories
+.npm/
+.pnp/
+.pnp.js
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# OS related files
+.DS_Store
+Thumbs.db

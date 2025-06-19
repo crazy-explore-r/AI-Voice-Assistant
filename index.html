@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AI Voice Agent (MVP)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        #userText,
+        #aiText {
+            background-color: #f1f1f1;
+            padding: 10px;
+            border-radius: 5px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🎙️ Talk to AI</h2>
+    <p>Click the button and allow microphone access when prompted.</p>
+    <button onclick="startListening()">Start Talking</button>
+    <div class="status">
+        <p><strong>Status:</strong> <span id="status">Ready</span></p>
+        <p><strong>You said:</strong> <span id="userText">...</span></p>
+        <p><strong>AI says:</strong> <span id="aiText">...</span></p>
+    </div>
+    <div id="debug" style="margin-top: 20px; font-size: 12px; color: #666;"></div>
+
+    <script>
+        // 1. Speech to Text - Check if the browser supports SpeechRecognition
+        if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+            alert("Your browser doesn't support speech recognition. Please try Chrome or Edge.");
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+
+        recognition.onresult = function (event) {
+            const userSpeech = event.results[0][0].transcript;
+            document.getElementById("status").textContent = "Processing...";
+            document.getElementById("userText").textContent = userSpeech;
+            console.log("Speech recognized:", userSpeech);
+            document.getElementById("debug").textContent += "Speech recognized: " + userSpeech + "\n";
+            sendToGPT(userSpeech);
+        };
+
+        recognition.onerror = function (event) {
+            console.error("Speech recognition error:", event.error);
+            document.getElementById("userText").textContent = "Error: " + event.error + ". Try again.";
+        };
+
+        recognition.onend = function () {
+            console.log("Speech recognition ended");
+        };
+
+        function startListening() {
+            document.getElementById("status").textContent = "Listening...";
+            document.getElementById("userText").textContent = "...";
+            document.getElementById("debug").textContent = ""; // Clear debug info
+
+            try {
+                recognition.start();
+            } catch (error) {
+                console.error("Error starting speech recognition:", error);
+                document.getElementById("status").textContent = "Error";
+                document.getElementById("userText").textContent = "Error starting: " + error.message;
+                document.getElementById("debug").textContent = "Full error: " + JSON.stringify(error);
+            }
+        }
+
+        // 2. Send to GPT-4o
+        async function sendToGPT(message) {
+            document.getElementById("aiText").textContent = "Thinking...";
+            try {
+                console.log("Sending to backend server:", message);
+                const response = await fetch("/api/chat", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`API error: ${response.status} - ${JSON.stringify(errorData)}`);
+                }
+
+                const data = await response.json();
+                console.log("OpenAI response:", data);
+
+                if (data.choices && data.choices[0] && data.choices[0].message) {
+                    const reply = data.choices[0].message.content;
+                    document.getElementById("aiText").textContent = reply;
+                    speak(reply);
+                } else {
+                    throw new Error("Unexpected API response format");
+                }
+            } catch (error) {
+                console.error("Error calling API:", error);
+                document.getElementById("aiText").textContent = "Error: " + error.message;
+            }
+        }
+
+        // 3. Text to Speech
+        function speak(text) {
+            if (!('speechSynthesis' in window)) {
+                console.error("Browser doesn't support speech synthesis");
+                return;
+            }
+
+            try {
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'en-US';
+
+                utter.onerror = function (event) {
+                    console.error("Speech synthesis error:", event);
+                };
+
+                speechSynthesis.speak(utter);
+            } catch (error) {
+                console.error("Error in speech synthesis:", error);
+            }
+        }
+    </script>
+</body>
+
+</html>
