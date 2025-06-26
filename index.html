@@ -40,16 +40,22 @@
             border-radius: 5px;
             min-height: 20px;
         }
+
+        audio {
+            display: none;
+            margin-top: 20px;
+        }
     </style>
 </head>
 
 <body>
-    <h2>🎙️ Talk to AI</h2>
-    <p>Click the button and allow microphone access when prompted.</p>
-    <button onclick="startListening()">Start Talking</button>
+    <h2>🎙️ Talk to AI (Push to Talk)</h2>
+    <p>Hold the button, speak, and release to ask your question. The AI will reply with voice.</p>
+    <button id="pushToTalkBtn">Push to Talk</button>
+    <audio id="audioPlayback" controls style="display:none; margin-top:20px;"></audio>
     <div class="status">
         <p><strong>Status:</strong> <span id="status">Ready</span></p>
-        <p><strong>You said:</strong> <span id="userText">...</span></p>
+        <p><strong>Transcription:</strong> <span id="userText">...</span></p>
         <p><strong>AI says:</strong> <span id="aiText">...</span></p>
     </div>
     <div id="debug" style="margin-top: 20px; font-size: 12px; color: #666;"></div>
@@ -150,6 +156,72 @@
                 speechSynthesis.speak(utter);
             } catch (error) {
                 console.error("Error in speech synthesis:", error);
+            }
+        }
+
+        // --- Push to Talk Recording and Upload ---
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        const pushToTalkBtn = document.getElementById('pushToTalkBtn');
+        const audioPlayback = document.getElementById('audioPlayback');
+        const statusSpan = document.getElementById('status');
+        const userText = document.getElementById('userText');
+        const aiText = document.getElementById('aiText');
+
+        pushToTalkBtn.onmousedown = async function () {
+            audioChunks = [];
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    audioPlayback.src = URL.createObjectURL(audioBlob);
+                    audioPlayback.style.display = 'block';
+                    // Automatically upload and process
+                    uploadAndAsk();
+                };
+                mediaRecorder.start();
+                pushToTalkBtn.textContent = 'Release to Send';
+                statusSpan.textContent = 'Recording...';
+            } catch (err) {
+                statusSpan.textContent = 'Microphone access denied.';
+            }
+        };
+        pushToTalkBtn.onmouseup = function () {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                pushToTalkBtn.textContent = 'Push to Talk';
+                statusSpan.textContent = 'Processing...';
+            }
+        };
+        async function uploadAndAsk() {
+            if (!audioBlob) return;
+            statusSpan.textContent = 'Uploading and processing...';
+            userText.textContent = '...';
+            aiText.textContent = '...';
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'voice.webm');
+            try {
+                const response = await fetch('/api/voice-chat', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) throw new Error('Server error');
+                const result = await response.json();
+                userText.textContent = result.transcription || '(No transcription)';
+                aiText.textContent = result.text || '(No AI response)';
+                if (result.audioBase64 && result.audioMime) {
+                    audioPlayback.src = `data:${result.audioMime};base64,${result.audioBase64}`;
+                    audioPlayback.style.display = 'block';
+                    audioPlayback.play();
+                } else {
+                    audioPlayback.style.display = 'none';
+                }
+                statusSpan.textContent = 'Done.';
+            } catch (err) {
+                statusSpan.textContent = 'Error: ' + err.message;
             }
         }
     </script>
